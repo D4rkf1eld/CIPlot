@@ -1,0 +1,22 @@
+# Copyright (c) D4rkf1eld 2026. All rights reserved.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ciplot"
+version = "1.5.1"
+description = "A config-driven matplotlib wrapper for clean, interactive, reproducible plots. Supports multi-series, dual axes, confidence bands, overlays, browsing pages, and JSON export/restore with minimal boilerplate."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "D4rkf1eld" }]
+dependencies = ["matplotlib>=3.7",
+                "numpy>=1.24"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
