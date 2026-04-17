@@ -8,7 +8,7 @@
 
 | Currently, the latest version of the library is: |
 |-----------|
-| **CIPlot Beta 1.5.1** |
+| **CIPlot Beta 1.5.2** |
 
 </p>
 
@@ -123,7 +123,7 @@ You can quickly verify everything works:
 ```python
 import ciplot as cplt
 
-print(cplt._get_version()) # This should print the current version, e.g. "CIPlot Beta 1.5.1".
+print(cplt._get_version()) # This should print the current version, e.g. "CIPlot Beta 1.5.2".
 ```
 
 ---

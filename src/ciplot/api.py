@@ -48,6 +48,8 @@ from .interactivity import (_install_hover_highlight,
                             _install_legend_toggle,
                             _set_all_legend_entries_visibility)
 
+from .runtime import _close_tracked_figures, _track_figures
+
 def plot_xy(series: Sequence[SeriesCfg],
 
             markings: Optional[Sequence[MarkingObjectCfg]] = None,
@@ -73,8 +75,12 @@ def plot_xy(series: Sequence[SeriesCfg],
     if not visible_series:
         raise RuntimeError("There is no visible series to plot (all SeriesCfg.is_visible = False). \n Please set SeriesCfg.is_visible = True for at least one series to make it visible in the plot. \n")
 
+    _close_tracked_figures("plot_xy")
+
     if plot_cfg.separate_figures_per_series:
         figs: List[Figure] = []
+
+        single_plot_cfg = PlotCfg(**{**plot_cfg.__dict__, "separate_figures_per_series": False})
 
         if export_cfg is not None:
             if export_cfg.series_export_names is not None:
@@ -104,22 +110,25 @@ def plot_xy(series: Sequence[SeriesCfg],
                                        output_dpi = export_cfg.output_dpi,
                                        transparent_background = export_cfg.transparent_background,
                                        bbox_inches = export_cfg.bbox_inches)
-            figs.extend(plot_xy([s],
 
-                                markings = markings,
+            figs.append(_plot_multi_series_figure([s],
 
-                                background = background,
+                                                  markings = markings,
 
-                                plot_cfg = PlotCfg(**{**plot_cfg.__dict__, "separate_figures_per_series": False}),
+                                                  background = background,
 
-                                x_axis_cfg = x_axis_cfg,
-                                y_axis_cfg = y_axis_cfg,
+                                                  plot_cfg = single_plot_cfg,
 
-                                grid_cfg = grid_cfg,
+                                                  x_axis_cfg = x_axis_cfg,
+                                                  y_axis_cfg = y_axis_cfg,
 
-                                legend_cfg = legend_cfg,
+                                                  grid_cfg = grid_cfg,
 
-                                export_cfg = per_export))
+                                                  legend_cfg = legend_cfg,
+
+                                                  export_cfg = per_export))
+
+        _track_figures("plot_xy", figs)
 
         return figs
 
@@ -143,6 +152,8 @@ def plot_xy(series: Sequence[SeriesCfg],
     if export_cfg is not None:
         if export_cfg.enable_data_export:
             _export_series_data(series, export_cfg)
+
+    _track_figures("plot_xy", [fig])
 
     return [fig]
 
@@ -228,6 +239,8 @@ def browse_series(series: Optional[Sequence[SeriesCfg]],
 
     idx = int(np.clip(start_index, 0, n_pages - 1))
 
+    _close_tracked_figures("browse_series")
+
     initial_effective_cfg = _resolve_browse_page_settings_cfg(page_cfg = filtered_browse_page_settings_cfgs[idx],
                                                               markings = markings,
                                                               background = background,
@@ -286,6 +299,8 @@ def browse_series(series: Optional[Sequence[SeriesCfg]],
 
     with plt.rc_context(_rcparams_from_plot_cfg(initial_plot_cfg)):
         fig, ax = plt.subplots(figsize = fig_size, constrained_layout = initial_plot_cfg.use_constrained_layout)
+
+        _track_figures("browse_series", [fig])
 
         _try_tint_window_background(fig, initial_plot_cfg)
         _apply_dark_mode_post(fig, [ax], initial_plot_cfg)
@@ -565,6 +580,8 @@ def browse_structured_subplot_pages(structured_pages: Sequence[BrowseStructuredP
 
     idx = int(np.clip(start_index, 0, n_pages - 1))
 
+    _close_tracked_figures("browse_structured_subplot_pages")
+
     initial_page_effective_cfg = _resolve_browse_page_settings_cfg(page_cfg = visible_pages[idx].page_settings_cfg,
 
                                                                    markings = markings,
@@ -602,6 +619,8 @@ def browse_structured_subplot_pages(structured_pages: Sequence[BrowseStructuredP
 
     with plt.rc_context(_rcparams_from_plot_cfg(initial_plot_cfg)):
         fig = plt.figure(figsize = initial_fig_size, constrained_layout = initial_plot_cfg.use_constrained_layout)
+
+        _track_figures("browse_structured_subplot_pages", [fig])
 
         _try_tint_window_background(fig, initial_plot_cfg)
 
