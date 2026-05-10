@@ -27,7 +27,15 @@ from .config import (AxisCfg,
                      SeriesCfg)
 
 from .shared import _check_label_uniqueness
-from .serialization import _from_serialized_json, _to_json_serializable
+
+from .serialization import (_from_serialized_json,
+                            _to_json_serializable,
+                            _render_general_settings_import_block,
+                            _render_general_settings_python_value,
+                            _infer_general_settings_plot_function_name,
+                            _render_general_settings_plot_call,
+                            _make_restored_settings_safe)
+
 from .browse_helpers import _restore_exported_structured_cfg_node
 
 from .api import browse_series
@@ -76,7 +84,7 @@ def get_color_palette(num_colors: int, palette_name: Optional[str] = None) -> Li
         except ValueError:
             raise ValueError(f"Invalid palette name: {palette_name}. \n Please provide a valid matplotlib colormap name for the color palette. \n")
 
-    # Default to tab10 which has 10 distinct colors, and repeat if more colors are needed.
+    # Default to tab10 which has 10 distinct colors, and repeat, if more colors are needed
     default_cmap = plt.get_cmap("tab10")
 
     colors = [default_cmap(i % 10) for i in range(num_colors)]
@@ -551,7 +559,97 @@ def export_general_dataclasses_settings_to_json(filepath: Union[str, Path], **kw
         # and allow_nan = False to enforce strict JSON compliance by rejecting NaN and Infinity values.
         json.dump(serializable_json, f, indent = 4, sort_keys = True, ensure_ascii = False, allow_nan = False)
 
-def restore_general_dataclasses_settings_from_json(filepath: Union[str, Path]) -> Dict[str, Any]:
+def general_dataclasses_settings_to_python_code(filepath: Union[str, Path],
+                                                include_imports: bool = True,
+                                                import_from: str = "ciplot",
+                                                include_plot_call: bool = False,
+                                                plot_function_name: Optional[str] = None,
+                                                indent_size: int = 4) -> str:
+    """
+    Convert a JSON file created with export_general_dataclasses_settings_to_json(...)
+    into copyable Python code containing the same configuration structure.
+
+    Arguments:
+        filepath (Union[str, Path]): Path to the JSON file created by export_general_dataclasses_settings_to_json(...).
+
+        include_imports (bool): If True, prepend import lines for pathlib.Path and the CIPlot dataclasses used by the serialized content.
+
+        import_from (str): Package/module used in the generated import line, for example "ciplot" or "base.utils.CIPlot.src.ciplot".
+
+        include_plot_call (bool): If True, append a best-effort CIPlot API call such as browse_series(...), plot_xy(...),
+        or browse_structured_subplot_pages(...), using the variables generated from the JSON keys.
+
+        plot_function_name (Optional[str]): Explicit plot function name to use for the optional plot call.
+        If None, the function tries to infer it from the top-level keys.
+
+        indent_size (int): Number of spaces used for one indentation level.
+
+    Returns:
+        str: The generated Python code.
+    """
+
+    path = Path(filepath)
+
+    with path.open("r", encoding = "utf-8") as f:
+        raw = json.load(f)
+
+    if not isinstance(raw, dict):
+        raise TypeError(f"Expected the JSON file to contain a dictionary at the top level, but got {type(raw).__name__}. \n")
+
+    blocks: List[str] = []
+
+    if include_imports:
+        import_block = _render_general_settings_import_block(raw, import_from = import_from)
+
+        if import_block:
+            blocks.append(import_block)
+
+    assignments: List[str] = []
+
+    for name, value in raw.items():
+        assignments.append(f"{name} = {_render_general_settings_python_value(value, indent_level = 0, indent_size = indent_size)}")
+
+    blocks.append("\n\n".join(assignments))
+
+    if include_plot_call:
+        resolved_plot_function_name = plot_function_name or _infer_general_settings_plot_function_name(raw)
+
+        if resolved_plot_function_name is None:
+            raise ValueError("Could not infer a plot function from the exported top-level keys. Please pass plot_function_name explicitly. \n")
+
+        if include_imports:
+            # Add the API function import next to the generated code instead of hiding it in the dataclass import collector
+            api_import = f"from {import_from} import {resolved_plot_function_name}"
+
+            blocks.insert(1 if blocks else 0, api_import)
+
+        blocks.append(_render_general_settings_plot_call(raw, resolved_plot_function_name, indent_size = indent_size))
+
+    return "\n\n".join(blocks)
+
+def print_general_dataclasses_settings_from_json(filepath: Union[str, Path],
+                                                 include_imports: bool = True,
+                                                 import_from: str = "ciplot",
+                                                 include_plot_call: bool = False,
+                                                 plot_function_name: Optional[str] = None,
+                                                 indent_size: int = 4) -> str:
+    """
+    Print and return copyable Python code for a JSON file created with
+    export_general_dataclasses_settings_to_json(...).
+    """
+
+    code = general_dataclasses_settings_to_python_code(filepath = filepath,
+                                                       include_imports = include_imports,
+                                                       import_from = import_from,
+                                                       include_plot_call = include_plot_call,
+                                                       plot_function_name = plot_function_name,
+                                                       indent_size = indent_size)
+
+    print(code)
+
+    return code
+
+def restore_general_dataclasses_settings_from_json(filepath: Union[str, Path], allow_restored_export_actions: bool = False) -> Dict[str, Any]:
     """
     Restore settings from a JSON file previously created by export_general_dataclasses_settings_to_json().
 
@@ -559,6 +657,10 @@ def restore_general_dataclasses_settings_from_json(filepath: Union[str, Path]) -
         filepath (Union[str, Path]): The file path to the JSON file containing the exported settings.
         The file should have been created using the export_general_dataclasses_settings_to_json function,
         which ensures that the JSON structure is compatible with this restoration function.
+
+        allow_restored_export_actions (bool): Whether to allow restored settings that correspond to export actions (e.g. ExportCfg) to be
+        returned as their original dataclass instances with all their attributes. If False, any restored settings that correspond to export actions
+        will be made safe by removing attributes, that could trigger export actions.
 
     Returns:
         Dict[str, Any]: A dictionary containing the restored settings, where the keys correspond to the original keyword argument names provided during export,
@@ -579,7 +681,12 @@ def restore_general_dataclasses_settings_from_json(filepath: Union[str, Path]) -
     restored_dataclasses: Dict[str, Any] = {}
 
     for k, v in raw.items():
-        restored_dataclasses[k] = _from_serialized_json(v)
+        restored = _from_serialized_json(v)
+
+        if not allow_restored_export_actions:
+            restored = _make_restored_settings_safe(restored)
+
+        restored_dataclasses[k] = restored
 
     return restored_dataclasses
 

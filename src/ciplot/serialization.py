@@ -1,6 +1,8 @@
 # Copyright (c) D4rkf1eld 2026. All rights reserved.
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
+
+import copy
 
 import dataclasses
 import importlib
@@ -10,6 +12,8 @@ import numpy as np
 from dataclasses import is_dataclass
 from enum import Enum
 from pathlib import Path
+
+from .config import ExportCfg
 
 _TYPE_KEY = "__type__"
 _VALUE_KEY = "value"
@@ -205,3 +209,375 @@ def _from_serialized_json(node: Any) -> Any:
         return {k: _from_serialized_json(v) for k, v in node.items()}
 
     raise TypeError(f"The JSON node {node!r} cannot be deserialized into a Python object because it is of an unsupported type {type(node).__name__}. \n")
+
+def _python_code_class_name_from_fqname(fqname: str) -> str:
+    """
+    Extract the short Python class name from a fully-qualified serialized class name.
+    Example: "some.module:Outer.Inner" -> "Inner".
+    """
+
+    if ":" in fqname:
+        _, qualname = fqname.split(":", 1)
+
+    else:
+        qualname = fqname
+
+    return qualname.split(".")[-1]
+
+def _collect_general_settings_python_code_requirements(node: Any,
+                                                       class_names: List[str],
+                                                       needs_path_import: List[bool]) -> None:
+    """
+    Collect dataclass / enum class names and whether pathlib.Path is needed by the generated Python code.
+    The class_names list preserves first-use order for stable and readable import output.
+    """
+
+    if isinstance(node, list):
+        for item in node:
+            _collect_general_settings_python_code_requirements(item, class_names, needs_path_import)
+
+        return
+
+    if not isinstance(node, dict):
+        return
+
+    tag = node.get("__type__")
+
+    if tag in ("dataclass", "enum"):
+        class_name = _python_code_class_name_from_fqname(str(node.get("class", "")))
+
+        if class_name and class_name not in class_names:
+            class_names.append(class_name)
+
+    elif tag == "path":
+        needs_path_import[0] = True
+
+    if tag == "dataclass":
+        fields = node.get("fields", {})
+
+        if isinstance(fields, dict):
+            for value in fields.values():
+                _collect_general_settings_python_code_requirements(value, class_names, needs_path_import)
+
+        return
+
+    if tag in ("tuple", "set"):
+        for item in node.get("items", []):
+            _collect_general_settings_python_code_requirements(item, class_names, needs_path_import)
+
+        return
+
+    if tag == "dict_items":
+        for key, value in node.get("items", []):
+            _collect_general_settings_python_code_requirements(key, class_names, needs_path_import)
+            _collect_general_settings_python_code_requirements(value, class_names, needs_path_import)
+
+        return
+
+    for value in node.values():
+        _collect_general_settings_python_code_requirements(value, class_names, needs_path_import)
+
+def _render_general_settings_python_value(node: Any, indent_level: int = 0, indent_size: int = 4) -> str:
+    """
+    Render one node from export_general_dataclasses_settings_to_json(...) as copyable Python code.
+    """
+
+    indent = " " * indent_level
+    child_indent = " " * (indent_level + indent_size)
+
+    if node is None or isinstance(node, (bool, int, float, str)):
+        return repr(node)
+
+    if isinstance(node, list):
+        if not node:
+            return "[]"
+
+        rendered_items = []
+
+        for item in node:
+            rendered_items.append(f"{child_indent}{_render_general_settings_python_value(item, indent_level + indent_size, indent_size)},")
+
+        return "[\n" + "\n".join(rendered_items) + f"\n{indent}]"
+
+    if isinstance(node, dict):
+        tag = node.get("__type__")
+
+        if tag == "path":
+            return f"Path({node.get('value')!r})"
+
+        if tag == "enum":
+            class_name = _python_code_class_name_from_fqname(str(node.get("class", "")))
+            member_name = node.get("value")
+
+            return f"{class_name}.{member_name}"
+
+        if tag == "tuple":
+            items = node.get("items", [])
+
+            if not items:
+                return "()"
+
+            rendered_items = []
+
+            for item in items:
+                rendered_items.append(f"{child_indent}{_render_general_settings_python_value(item, indent_level + indent_size, indent_size)},")
+
+            return "(\n" + "\n".join(rendered_items) + f"\n{indent})"
+
+        if tag == "set":
+            items = node.get("items", [])
+
+            if not items:
+                return "set()"
+
+            rendered_items = []
+
+            for item in items:
+                rendered_items.append(f"{child_indent}{_render_general_settings_python_value(item, indent_level + indent_size, indent_size)},")
+
+            return "{\n" + "\n".join(rendered_items) + f"\n{indent}}}"
+
+        if tag == "dict_items":
+            items = node.get("items", [])
+
+            if not items:
+                return "{}"
+
+            rendered_items = []
+
+            for key, value in items:
+                rendered_key = _render_general_settings_python_value(key, indent_level + indent_size, indent_size)
+                rendered_value = _render_general_settings_python_value(value, indent_level + indent_size, indent_size)
+                rendered_items.append(f"{child_indent}{rendered_key}: {rendered_value},")
+
+            return "{\n" + "\n".join(rendered_items) + f"\n{indent}}}"
+
+        if tag == "dataclass":
+            class_name = _python_code_class_name_from_fqname(str(node.get("class", "")))
+            fields = node.get("fields", {})
+
+            if not isinstance(fields, dict):
+                raise TypeError(f"Expected serialized dataclass fields to be a dictionary, got {type(fields).__name__}. \n")
+
+            if not fields:
+                return f"{class_name}()"
+
+            rendered_fields = []
+
+            for field_name, field_value in fields.items():
+                rendered_value = _render_general_settings_python_value(field_value, indent_level + indent_size, indent_size)
+                rendered_fields.append(f"{child_indent}{field_name} = {rendered_value},")
+
+            return f"{class_name}(\n" + "\n".join(rendered_fields) + f"\n{indent})"
+
+        if not node:
+            return "{}"
+
+        rendered_items = []
+
+        for key, value in node.items():
+            rendered_key = repr(key)
+            rendered_value = _render_general_settings_python_value(value, indent_level + indent_size, indent_size)
+            rendered_items.append(f"{child_indent}{rendered_key}: {rendered_value},")
+
+        return "{\n" + "\n".join(rendered_items) + f"\n{indent}}}"
+
+    raise TypeError(f"Cannot render object of type {type(node).__name__} as Python code. \n")
+
+def _render_general_settings_import_block(raw: Dict[str, Any], import_from: str = "ciplot") -> str:
+    """
+    Build an import block for the generated Python code.
+    """
+
+    class_names: List[str] = []
+    needs_path_import = [False]
+
+    _collect_general_settings_python_code_requirements(raw, class_names, needs_path_import)
+
+    lines: List[str] = []
+
+    if needs_path_import[0]:
+        lines.append("from pathlib import Path")
+
+    if class_names:
+        if lines:
+            lines.append("")
+
+        sorted_names = sorted(class_names)
+
+        if len(sorted_names) == 1:
+            lines.append(f"from {import_from} import {sorted_names[0]}")
+
+        else:
+            lines.append(f"from {import_from} import ({sorted_names[0]},")
+
+            for class_name in sorted_names[1:-1]:
+                lines.append(f"{' ' * (len(import_from) + 14)}{class_name},")
+
+            lines.append(f"{' ' * (len(import_from) + 14)}{sorted_names[-1]})")
+
+    return "\n".join(lines)
+
+def _infer_general_settings_plot_function_name(raw: Dict[str, Any]) -> Optional[str]:
+    """
+    Infer the CIPlot API call that best matches the exported top-level keys.
+    """
+
+    if "structured_pages" in raw:
+        return "browse_structured_subplot_pages"
+
+    if "multi_series" in raw or "browse_page_settings_cfgs" in raw:
+        return "browse_series"
+
+    if "series" in raw:
+        return "plot_xy"
+
+    return None
+
+def _render_general_settings_plot_call(raw: Dict[str, Any], plot_function_name: str, indent_size: int = 4) -> str:
+    """
+    Render an optional CIPlot API call using variables emitted from the JSON file.
+    """
+
+    argument_order_by_function = {"plot_xy": ["series",
+                                              "markings",
+                                              "background",
+                                              "plot_cfg",
+                                              "x_axis_cfg",
+                                              "y_axis_cfg",
+                                              "grid_cfg",
+                                              "legend_cfg",
+                                              "export_cfg"],
+
+                                  "browse_series": ["series",
+                                                    "multi_series",
+                                                    "markings",
+                                                    "background",
+                                                    "plot_cfg",
+                                                    "x_axis_cfg",
+                                                    "y_axis_cfg",
+                                                    "grid_cfg",
+                                                    "legend_cfg",
+                                                    "export_cfg",
+                                                    "browse_page_settings_cfgs",
+                                                    "start_index",
+                                                    "export_all_pages"],
+
+                                  "browse_structured_subplot_pages": ["structured_pages",
+                                                                      "markings",
+                                                                      "background",
+                                                                      "plot_cfg",
+                                                                      "x_axis_cfg",
+                                                                      "y_axis_cfg",
+                                                                      "grid_cfg",
+                                                                      "legend_cfg",
+                                                                      "export_cfg",
+                                                                      "start_index",
+                                                                      "export_all_pages"]}
+
+    if plot_function_name not in argument_order_by_function:
+        raise ValueError(f"Unsupported plot_function_name: {plot_function_name!r}. \n")
+
+    argument_order = argument_order_by_function[plot_function_name]
+    present_args = [arg for arg in argument_order if arg in raw]
+
+    if plot_function_name == "browse_series" and "multi_series" in raw and "series" not in raw:
+        present_args = ["series"] + present_args
+
+    child_indent = " " * indent_size
+    rendered_args: List[str] = []
+
+    for arg in present_args:
+        if arg == "series" and arg not in raw:
+            rendered_args.append(f"{child_indent}series = None,")
+
+        else:
+            rendered_args.append(f"{child_indent}{arg} = {arg},")
+
+    return f"{plot_function_name}(\n" + "\n".join(rendered_args) + "\n)"
+
+def _make_restored_settings_safe(obj: Any) -> Any:
+    """
+    Disable write-producing export actions in restored general settings.
+
+    General settings files should restore plotting configuration, not silently grant
+    permission to overwrite files.
+    """
+
+    if isinstance(obj, ExportCfg):
+        return dataclasses.replace(obj,
+                                   enable_export = False,
+                                   enable_data_export = False,
+                                   data_export_with_style = False)
+
+    if isinstance(obj, dict):
+        changed = False
+
+        out = {}
+
+        for key, value in obj.items():
+            safe_value = _make_restored_settings_safe(value)
+
+            out[key] = safe_value
+
+            if safe_value is not value:
+                changed = True
+
+        return out if changed else obj
+
+    if isinstance(obj, list):
+        changed = False
+
+        out = []
+
+        for value in obj:
+            safe_value = _make_restored_settings_safe(value)
+
+            out.append(safe_value)
+
+            if safe_value is not value:
+                changed = True
+
+        return out if changed else obj
+
+    if isinstance(obj, tuple):
+        changed = False
+
+        out = []
+
+        for value in obj:
+            safe_value = _make_restored_settings_safe(value)
+
+            out.append(safe_value)
+
+            if safe_value is not value:
+                changed = True
+
+        return tuple(out) if changed else obj
+
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        field_updates = {}
+
+        changed = False
+
+        for field in dataclasses.fields(obj):
+            value = getattr(obj, field.name)
+
+            safe_value = _make_restored_settings_safe(value)
+
+            if safe_value is not value:
+                field_updates[field.name] = safe_value
+
+                changed = True
+
+        if not changed:
+            return obj
+
+        safe_obj = copy.deepcopy(obj)
+
+        for field_name, safe_value in field_updates.items():
+            object.__setattr__(safe_obj, field_name, safe_value)
+
+        return safe_obj
+
+    return obj
