@@ -226,7 +226,7 @@ def _python_code_class_name_from_fqname(fqname: str) -> str:
 
 def _collect_general_settings_python_code_requirements(node: Any,
                                                        class_names: List[str],
-                                                       needs_path_import: List[bool]) -> None:
+                                                       needs_path_import: List[bool]):
     """
     Collect dataclass / enum class names and whether pathlib.Path is needed by the generated Python code.
     The class_names list preserves first-use order for stable and readable import output.

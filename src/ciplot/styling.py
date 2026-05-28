@@ -7,7 +7,7 @@ from matplotlib.figure import Figure
 
 from .config import PlotCfg
 
-def _style_colorbar_for_plot_cfg(colorbar_obj: Any, plot_cfg: Optional[PlotCfg]) -> None:
+def _style_colorbar_for_plot_cfg(colorbar_obj: Any, plot_cfg: Optional[PlotCfg]):
     """
     Apply best-effort CIPlot styling to a matplotlib colorbar, including dark-mode text and spine colors.
     """
@@ -64,30 +64,34 @@ def _rcparams_from_plot_cfg(plot_cfg: PlotCfg) -> Dict[str, Any]:
 
     rc: Dict[str, Any] = {"font.size": plot_cfg.base_font_size}
 
-    if not plot_cfg.enable_dark_mode:
-        return rc
+    if plot_cfg.font_family is not None:
+        rc["font.family"] = plot_cfg.font_family
 
-    rc.update({# Parameters for the canvas (the "white stuff" around the axes)
-               "figure.facecolor": plot_cfg.dark_mode_figure_facecolor,
-               "figure.edgecolor": plot_cfg.dark_mode_figure_facecolor,
-               "savefig.facecolor": plot_cfg.dark_mode_figure_facecolor,
-               "savefig.edgecolor": plot_cfg.dark_mode_figure_facecolor,
+    if plot_cfg.enable_dark_mode:
+        rc.update({# Parameters for the canvas (the "white stuff" around the axes)
+                   "figure.facecolor": plot_cfg.dark_mode_figure_facecolor,
+                   "figure.edgecolor": plot_cfg.dark_mode_figure_facecolor,
+                   "savefig.facecolor": plot_cfg.dark_mode_figure_facecolor,
+                   "savefig.edgecolor": plot_cfg.dark_mode_figure_facecolor,
 
-               # Parameters for the axes
-               "axes.facecolor": plot_cfg.dark_mode_axes_facecolor,
-               "axes.edgecolor": plot_cfg.dark_mode_spine_color,
+                   # Parameters for the axes
+                   "axes.facecolor": plot_cfg.dark_mode_axes_facecolor,
+                   "axes.edgecolor": plot_cfg.dark_mode_spine_color,
 
-               # Parameters for the text (tick labels, axis labels, title, legend text, etc.)
-               "text.color": plot_cfg.dark_mode_text_color,
-               "axes.labelcolor": plot_cfg.dark_mode_text_color,
-               "axes.titlecolor": plot_cfg.dark_mode_text_color,
-               "xtick.color": plot_cfg.dark_mode_text_color,
-               "ytick.color": plot_cfg.dark_mode_text_color,
+                   # Parameters for the text (tick labels, axis labels, title, legend text, etc.)
+                   "text.color": plot_cfg.dark_mode_text_color,
+                   "axes.labelcolor": plot_cfg.dark_mode_text_color,
+                   "axes.titlecolor": plot_cfg.dark_mode_text_color,
+                   "xtick.color": plot_cfg.dark_mode_text_color,
+                   "ytick.color": plot_cfg.dark_mode_text_color,
 
-               # Parameters for the grid and the legend
-               "grid.color": plot_cfg.dark_mode_grid_color,
-               "legend.facecolor": plot_cfg.dark_mode_axes_facecolor,
-               "legend.edgecolor": plot_cfg.dark_mode_spine_color})
+                   # Parameters for the grid and the legend
+                   "grid.color": plot_cfg.dark_mode_grid_color,
+                   "legend.facecolor": plot_cfg.dark_mode_axes_facecolor,
+                   "legend.edgecolor": plot_cfg.dark_mode_spine_color})
+
+    # Let users override anything, including dark-mode defaults
+    rc.update(dict(plot_cfg.rc_params))
 
     return rc
 
@@ -117,7 +121,7 @@ def _apply_dark_mode_post(fig: Figure, axes: Sequence[Axes], plot_cfg: PlotCfg):
 
         ax.title.set_color(plot_cfg.dark_mode_text_color)
 
-def _try_tint_window_background(fig: Figure, plot_cfg: PlotCfg) -> None:
+def _try_tint_window_background(fig: Figure, plot_cfg: PlotCfg):
     """
     Attempt to tint the background of the window containing the figure to match the dark mode figure facecolor,
     if the configuration allows for it and if the backend supports it (a so-called "best effort" solution).
@@ -221,3 +225,35 @@ def _install_figsize_display(fig: Figure, plot_cfg: PlotCfg) -> Optional[int]:
     _update_figsize_display()
 
     return fig.canvas.mpl_connect("resize_event", _update_figsize_display)
+
+def _subplot_adjust_kwargs_from_plot_cfg(plot_cfg: PlotCfg) -> Dict[str, float]:
+    """
+    Extract subplot adjustment parameters from the plot configuration.
+    """
+
+    _plot_cfg_mapping_to_subplot_adjust_keys = {"left_margin": "left", "right_margin": "right", "top_margin": "top", "bottom_margin": "bottom", "wspace": "wspace", "hspace": "hspace"}
+
+    kwargs: Dict[str, float] = {}
+
+    for key in ("left_margin", "right_margin", "top_margin", "bottom_margin", "wspace", "hspace"):
+        value = getattr(plot_cfg, key, None)
+
+        if value is not None:
+            kwargs[_plot_cfg_mapping_to_subplot_adjust_keys[key]] = float(value)
+
+    return kwargs
+
+def _apply_subplot_adjust(fig: Figure, plot_cfg: PlotCfg):
+    """
+    Apply subplot adjustments based on the plot configuration, if any are specified.
+    """
+
+    kwargs = _subplot_adjust_kwargs_from_plot_cfg(plot_cfg)
+
+    if not kwargs:
+        return
+
+    if plot_cfg.use_constrained_layout:
+        raise ValueError("Cannot apply subplot adjustments when use_constrained_layout is True, as constrained_layout manages spacing automatically. \n")
+
+    fig.subplots_adjust(**kwargs)

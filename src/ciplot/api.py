@@ -33,6 +33,7 @@ from .browse_helpers import (_render_structured_subplot,
                              _resolve_structured_subplot_cfg)
 
 from .styling import (_apply_dark_mode_post,
+                      _apply_subplot_adjust,
                       _install_figsize_display,
                       _rcparams_from_plot_cfg,
                       _try_tint_window_background)
@@ -305,10 +306,9 @@ def browse_series(series: Optional[Sequence[SeriesCfg]],
         _try_tint_window_background(fig, initial_plot_cfg)
         _apply_dark_mode_post(fig, [ax], initial_plot_cfg)
 
-        if initial_plot_cfg.bottom_margin is not None:
-            fig.subplots_adjust(bottom = initial_plot_cfg.bottom_margin)
+        _apply_subplot_adjust(fig, initial_plot_cfg)
 
-        def render(page_index: int) -> None:
+        def render(page_index: int):
             """
             Render the page_index-th page (each page may contain multiple series).
             """
@@ -340,8 +340,7 @@ def browse_series(series: Optional[Sequence[SeriesCfg]],
 
             _try_tint_window_background(fig, current_plot_cfg)
 
-            if current_plot_cfg.bottom_margin is not None:
-                fig.subplots_adjust(bottom = current_plot_cfg.bottom_margin)
+            _apply_subplot_adjust(fig, current_plot_cfg)
 
             _apply_axis_cfg(ax, current_x_axis_cfg, which_axis = "x", default_fontsize = current_plot_cfg.base_font_size)
             _apply_axis_cfg(ax, current_y_axis_cfg, which_axis = "y", default_fontsize = current_plot_cfg.base_font_size)
@@ -431,6 +430,8 @@ def browse_series(series: Optional[Sequence[SeriesCfg]],
                 fig.tight_layout()
 
             fig.canvas.draw_idle()
+
+            _apply_subplot_adjust(fig, current_plot_cfg)
 
             _apply_dark_mode_post(fig, [ax], current_plot_cfg)
 
@@ -624,7 +625,7 @@ def browse_structured_subplot_pages(structured_pages: Sequence[BrowseStructuredP
 
         _try_tint_window_background(fig, initial_plot_cfg)
 
-        def render(page_index: int) -> None:
+        def render(page_index: int):
             nonlocal pick_cids, hover_cids
 
             current_page_cfg = visible_pages[page_index]
@@ -682,8 +683,7 @@ def browse_structured_subplot_pages(structured_pages: Sequence[BrowseStructuredP
 
             _try_tint_window_background(fig, current_page_plot_cfg)
 
-            if current_page_plot_cfg.bottom_margin is not None:
-                fig.subplots_adjust(bottom = current_page_plot_cfg.bottom_margin)
+            _apply_subplot_adjust(fig, current_page_plot_cfg)
 
             n_rows = max(1, len(current_page_cfg.rows))
             max_cols = max((len(row) for row in current_page_cfg.rows), default = 1)
@@ -760,6 +760,8 @@ def browse_structured_subplot_pages(structured_pages: Sequence[BrowseStructuredP
                 else:
                     fig.tight_layout()
 
+            _apply_subplot_adjust(fig, current_page_plot_cfg)
+
             _apply_dark_mode_post(fig, all_axes_for_dark_mode, current_page_plot_cfg)
 
             _refresh_figsize_display(current_page_plot_cfg)
@@ -804,7 +806,7 @@ def browse_structured_subplot_pages(structured_pages: Sequence[BrowseStructuredP
 
             return (j + n_pages) % n_pages
 
-        def on_key(event) -> None:
+        def on_key(event):
             nonlocal idx
 
             k = (event.key or "").lower()

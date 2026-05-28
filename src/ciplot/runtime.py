@@ -8,7 +8,7 @@ from matplotlib.figure import Figure
 
 _TRACKED_FIGURES: Dict[str, List[Figure]] = {}
 
-def _close_tracked_figures(api_name: str) -> None:
+def _close_tracked_figures(api_name: str):
     """
     Close all figures currently tracked for one public CIPlot API.
     This keeps repeated top-level calls from accumulating open matplotlib windows.
@@ -26,7 +26,7 @@ def _close_tracked_figures(api_name: str) -> None:
         except Exception:
             pass
 
-def _track_figures(api_name: str, figures: Iterable[Figure]) -> None:
+def _track_figures(api_name: str, figures: Iterable[Figure]):
     """
     Replace the tracked figure list for one public CIPlot API.
     """

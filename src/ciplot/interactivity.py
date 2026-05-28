@@ -154,7 +154,7 @@ def _install_legend_toggle(fig: Figure, legend_obj) -> int:
 
     return cid
 
-def _set_artist_visibility_recursive(obj: Any, visible: bool) -> None:
+def _set_artist_visibility_recursive(obj: Any, visible: bool):
     """
     Recursively set the visibility of an artist and all its children.
     Handles common Matplotlib container types like lists, tuples, sets, etc.,
@@ -199,7 +199,7 @@ def _set_artist_visibility_recursive(obj: Any, visible: bool) -> None:
         for child in kids:
             _set_artist_visibility_recursive(child, visible)
 
-def _set_all_legend_entries_visibility(fig: Figure, legend_obj, visible: bool) -> None:
+def _set_all_legend_entries_visibility(fig: Figure, legend_obj, visible: bool):
     """
     Set the visibility of all legend entries and their corresponding lines in the plot to either visible
     or dimmed (not fully hidden, to keep the legend layout intact).

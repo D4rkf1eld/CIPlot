@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ciplot"
-version = "1.5.3"
+version = "1.5.4"
 description = "A config-driven matplotlib wrapper for clean, interactive, reproducible plots. Supports multi-series, dual axes, confidence bands, overlays, browsing pages, and JSON export/restore with minimal boilerplate."
 readme = "README.md"
 requires-python = ">=3.9"

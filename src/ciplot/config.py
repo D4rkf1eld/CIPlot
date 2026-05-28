@@ -389,9 +389,17 @@ class PlotCfg:
     - figure_size: Size of the figure in inches (width, height).
     - show_current_figure_size: Whether to show the current figure size as a live overlay in the interactive figure window.
 
+    - font_family: Font family for all text in the plot (e.g. "serif", "sans-serif", "monospace", or a specific font name).
     - base_font_size: Base font size for all text in the plot.
 
+    - left_margin: Optional left margin as a fraction of figure width (e.g. 0.1).
+    - right_margin: Optional right margin as a fraction of figure width (e.g. 0.9).
+    - top_margin: Optional top margin as a fraction of figure height (e.g. 0.8).
     - bottom_margin: Optional bottom margin as a fraction of figure height (e.g. 0.2).
+
+    - wspace: Optional width space between subplots when using multiple subplots.
+    - hspace: Optional height space between subplots when using multiple subplots.
+
     - use_tight_layout: Whether to use tight_layout for automatic spacing.
     - use_constrained_layout: Whether to use constrained_layout for automatic spacing.
 
@@ -418,6 +426,8 @@ class PlotCfg:
     - dark_mode_tooltip_facecolor: Tooltip face color in dark mode.
     - dark_mode_tooltip_edgecolor: Tooltip edge color in dark mode.
     - dark_mode_tooltip_alpha: Tooltip alpha transparency in dark mode.
+
+    - rc_params: Additional matplotlib rcParams to apply globally (e.g. {"lines.linewidth": 2, "axes.grid": True}).
     """
 
     plot_title: Optional[str] = None
@@ -427,9 +437,17 @@ class PlotCfg:
     figure_size: Optional[Tuple[Number, Number]] = None
     show_current_figure_size: bool = False
 
+    font_family: Optional[Union[str, Sequence[str]]] = None
     base_font_size: int = 10
 
+    left_margin: Optional[float] = None
+    right_margin: Optional[float] = None
+    top_margin: Optional[float] = None
     bottom_margin: Optional[float] = None
+
+    wspace: Optional[float] = None
+    hspace: Optional[float] = None
+
     use_tight_layout: bool = True
     use_constrained_layout: bool = False
 
@@ -458,6 +476,8 @@ class PlotCfg:
     dark_mode_tooltip_facecolor: str = "#333333"
     dark_mode_tooltip_edgecolor: str = "#777777"
     dark_mode_tooltip_alpha: float = 0.90
+
+    rc_params: Dict[str, Any] = field(default_factory = dict)
 
 @dataclass
 class BrowsePageSettingsCfg:

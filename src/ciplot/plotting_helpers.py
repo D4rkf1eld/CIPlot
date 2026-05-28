@@ -36,6 +36,7 @@ from .rendering import (_add_legend,
                         _apply_partial_axis_limits)
 
 from .styling import (_apply_dark_mode_post,
+                      _apply_subplot_adjust,
                       _flip_black_to_white_in_style,
                       _install_figsize_display,
                       _rcparams_from_plot_cfg,
@@ -67,8 +68,7 @@ def _plot_multi_series_figure(series: Sequence[SeriesCfg],
     with plt.rc_context(_rcparams_from_plot_cfg(plot_cfg)):
         fig, ax_left = plt.subplots(figsize = fig_size, constrained_layout = plot_cfg.use_constrained_layout)
 
-        if plot_cfg.bottom_margin is not None:
-            fig.subplots_adjust(bottom = plot_cfg.bottom_margin)
+        _apply_subplot_adjust(fig, plot_cfg)
 
         if plot_cfg.plot_title:
             ax_left.set_title(plot_cfg.plot_title)
@@ -152,6 +152,8 @@ def _plot_multi_series_figure(series: Sequence[SeriesCfg],
 
         if plot_cfg.use_tight_layout and not plot_cfg.use_constrained_layout:
             fig.tight_layout()
+
+        _apply_subplot_adjust(fig, plot_cfg)
 
         _apply_dark_mode_post(fig, [ax_left] + ([ax_right] if ax_right is not None else []), plot_cfg)
 

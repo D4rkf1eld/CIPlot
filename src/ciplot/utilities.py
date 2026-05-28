@@ -530,7 +530,7 @@ def exemplify_color_palettes_looks(curves_to_plot: int = 10,
 
     return multi_series, plot_cfg, legend_cfg, palette_names
 
-def export_general_dataclasses_settings_to_json(filepath: Union[str, Path], **kwargs: Any) -> None:
+def export_general_dataclasses_settings_to_json(filepath: Union[str, Path], **kwargs: Any):
     """
     Export general settings (including dataclasses) to a JSON file, with type tags for restoration.
     The provided keyword arguments can include any JSON-serializable values, as well as dataclass instances,
