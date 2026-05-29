@@ -8,7 +8,7 @@
 
 | Currently, the latest version of the library is: |
 |-----------|
-| **CIPlot Beta 1.5.4** |
+| **CIPlot Beta 1.5.5** |
 
 </p>
 
@@ -18,7 +18,7 @@
 
 CIPlot is a lightweight plotting helper library built on top of Matplotlib. It wraps the repetitive parts of figure setup into a set of dataclass-based configuration objects, so you can describe plots declaratively instead of repeatedly re-writing scattered `pyplot` boilerplate in every project.
 
-The library entry point is `ciplot.py`, and the public API is centered around:
+The library entry point is `api.py`, which is centered around:
 
 - `plot_xy(...)`
 - `browse_series(...)`
@@ -123,7 +123,7 @@ You can quickly verify everything works:
 ```python
 import ciplot as cplt
 
-print(cplt._get_version()) # This should print the current version, e.g. "CIPlot Beta 1.5.4".
+print(cplt._get_version()) # This should print the current version, e.g. "CIPlot Beta 1.5.5".
 ```
 
 ---

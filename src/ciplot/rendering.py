@@ -1,9 +1,12 @@
 # Copyright (c) D4rkf1eld 2026. All rights reserved.
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+
 import matplotlib.ticker as mticker
+
+from collections import OrderedDict
 
 from matplotlib import patches
 from matplotlib.axes import Axes
@@ -18,9 +21,11 @@ from .config import (AxisCfg,
                      MarkingObjectCfg,
                      TickCfg)
 
-def _add_legend(ax: Axes, legend_cfg: LegendCfg):
+def _legend_kwargs_from_cfg(legend_cfg: LegendCfg, default_fontsize: Optional[int] = None) -> Dict[str, Any]:
     """
-    Add a legend to the given axes based on the provided configuration.
+    Build common matplotlib legend keyword arguments from a CIPlot LegendCfg.
+    The shared legend options are intentionally used for both subplot legends and
+    structured-page general legends.
     """
 
     kwargs: Dict[str, Any] = dict(loc = legend_cfg.legend_location,
@@ -32,6 +37,20 @@ def _add_legend(ax: Axes, legend_cfg: LegendCfg):
     if legend_cfg.legend_fontsize is not None:
         kwargs["fontsize"] = legend_cfg.legend_fontsize
 
+    elif default_fontsize is not None:
+        kwargs["fontsize"] = default_fontsize
+
+    kwargs.update(dict(legend_cfg.legend_style or {}))
+
+    return kwargs
+
+def _add_legend(ax: Axes, legend_cfg: LegendCfg):
+    """
+    Add a subplot-local legend to the given axes based on the provided configuration.
+    """
+
+    kwargs = _legend_kwargs_from_cfg(legend_cfg)
+
     if legend_cfg.put_legend_outside:
         kwargs["loc"] = "center left"
 
@@ -40,6 +59,217 @@ def _add_legend(ax: Axes, legend_cfg: LegendCfg):
         kwargs["borderaxespad"] = 0.0
 
     return ax.legend(**kwargs)
+
+def _collect_general_legend_entries(axes: Sequence[Axes], legend_cfg: LegendCfg) -> Tuple[List[Any], List[str], Dict[str, List[Any]]]:
+    """
+    Collect legend entries from all axes on a structured page.
+
+    Duplicate labels can be represented by one displayed legend entry while still
+    retaining all matching artists as interactivity targets.
+    """
+
+    label_to_handle: OrderedDict[str, Any] = OrderedDict()
+    label_to_artists: Dict[str, List[Any]] = {}
+
+    include = set(legend_cfg.general_legend_include_labels) if legend_cfg.general_legend_include_labels is not None else None
+    exclude = set(legend_cfg.general_legend_exclude_labels)
+
+    for ax in axes:
+        if ax is None:
+            continue
+
+        try:
+            handles, labels = ax.get_legend_handles_labels()
+
+        except Exception:
+            continue
+
+        for handle, label in zip(handles, labels):
+            if not label or str(label).startswith("_"):
+                continue
+
+            if include is not None and label not in include:
+                continue
+
+            if label in exclude:
+                continue
+
+            label_to_artists.setdefault(label, []).append(handle)
+
+            if legend_cfg.general_legend_deduplicate_labels and label in label_to_handle:
+                continue
+
+            label_to_handle[label] = handle
+
+    if legend_cfg.general_legend_label_order is not None:
+        ordered: OrderedDict[str, Any] = OrderedDict()
+
+        for label in legend_cfg.general_legend_label_order:
+            if label in label_to_handle:
+                ordered[label] = label_to_handle[label]
+
+        for label, handle in label_to_handle.items():
+            if label not in ordered:
+                ordered[label] = handle
+
+        label_to_handle = ordered
+
+    return list(label_to_handle.values()), list(label_to_handle.keys()), label_to_artists
+
+def _resolve_general_legend_bbox_to_anchor(legend_cfg: LegendCfg) -> Optional[Tuple[float, float]]:
+    """
+    Resolve a practical default bbox_to_anchor for a general structured-page legend.
+    """
+
+    if legend_cfg.general_legend_bbox_to_anchor is not None:
+        x, y = legend_cfg.general_legend_bbox_to_anchor
+
+        return (float(x), float(y))
+
+    reserve_fraction = max(0.0, min(float(legend_cfg.general_legend_reserve_fraction), 0.95))
+
+    if legend_cfg.general_legend_placement == "subplot":
+        return (0.5, 0.5)
+
+    if legend_cfg.general_legend_reserve_space == "right":
+        return (1.0 - reserve_fraction + 0.02, 0.5)
+
+    if legend_cfg.general_legend_reserve_space == "left":
+        return (reserve_fraction - 0.02, 0.5)
+
+    if legend_cfg.general_legend_reserve_space == "top":
+        return (0.5, 1.0 - reserve_fraction + 0.02)
+
+    if legend_cfg.general_legend_reserve_space == "bottom":
+        return (0.5, reserve_fraction - 0.02)
+
+    if legend_cfg.put_legend_outside:
+        return (1.02, 0.5)
+
+    return None
+
+def _resolve_general_legend_location(legend_cfg: LegendCfg) -> str:
+    """
+    Resolve the legend location for a structured-page general legend.
+    For figure-level legends, Matplotlib's automatic "best" location is not reliable,
+    so a deterministic fallback is used.
+    """
+
+    if legend_cfg.legend_location != "best":
+        return legend_cfg.legend_location
+
+    if legend_cfg.general_legend_placement == "subplot":
+        return "best"
+
+    if legend_cfg.general_legend_reserve_space == "left":
+        return "center right"
+
+    if legend_cfg.general_legend_reserve_space == "top":
+        return "lower center"
+
+    if legend_cfg.general_legend_reserve_space == "bottom":
+        return "upper center"
+
+    return "center left" if (legend_cfg.put_legend_outside or legend_cfg.general_legend_reserve_space == "right") else "upper right"
+
+def _apply_general_legend_reserved_space(fig: Figure, legend_cfg: LegendCfg):
+    """
+    Reserve figure space for a structured-page general legend so it does not block subplot content.
+    """
+
+    if not legend_cfg.general_legend_show:
+        return
+
+    reserve_space = legend_cfg.general_legend_reserve_space
+
+    if reserve_space == "none":
+        return
+
+    f = max(0.0, min(float(legend_cfg.general_legend_reserve_fraction), 0.95))
+
+    if reserve_space == "right":
+        fig.subplots_adjust(right = 1.0 - f)
+
+    elif reserve_space == "left":
+        fig.subplots_adjust(left = f)
+
+    elif reserve_space == "top":
+        fig.subplots_adjust(top = 1.0 - f)
+
+    elif reserve_space == "bottom":
+        fig.subplots_adjust(bottom = f)
+
+def _add_general_legend(fig: Figure, axes_grid: Any, axes: Sequence[Axes], legend_cfg: LegendCfg, default_fontsize: int):
+    """
+    Add one structured-page general legend collected from all provided axes.
+
+    The legend can either be figure-level or placed into / on top of a specific subplot axes.
+    A private label-to-artist mapping is attached to the legend so the existing CIPlot
+    legend interactivity helpers can toggle all artists represented by one page-level label.
+    """
+
+    if not legend_cfg.general_legend_show:
+        return None
+
+    handles, labels, label_to_artists = _collect_general_legend_entries(axes, legend_cfg)
+
+    if not handles:
+        return None
+
+    kwargs = _legend_kwargs_from_cfg(legend_cfg, default_fontsize = default_fontsize)
+    kwargs["loc"] = _resolve_general_legend_location(legend_cfg)
+
+    bbox_to_anchor = _resolve_general_legend_bbox_to_anchor(legend_cfg)
+
+    if bbox_to_anchor is not None:
+        kwargs["bbox_to_anchor"] = bbox_to_anchor
+
+    if legend_cfg.general_legend_placement == "subplot":
+        if legend_cfg.general_legend_target_subplot is None:
+            raise ValueError("LegendCfg.general_legend_target_subplot must be provided when general_legend_placement = 'subplot'. \n")
+
+        row_index, col_index = legend_cfg.general_legend_target_subplot
+
+        if row_index < 0 or col_index < 0 or row_index >= axes_grid.shape[0] or col_index >= axes_grid.shape[1]:
+            raise IndexError(f"LegendCfg.general_legend_target_subplot {(row_index, col_index)!r} is outside the current subplot grid with shape {axes_grid.shape}. \n")
+
+        target_ax = axes_grid[row_index][col_index]
+
+        if not target_ax.get_visible() or not target_ax.has_data():
+            target_ax.set_visible(True)
+            target_ax.set_axis_off()
+
+        transform_mode = legend_cfg.general_legend_bbox_transform
+
+        if transform_mode == "auto":
+            transform_mode = "target_axes"
+
+        if transform_mode == "target_axes":
+            kwargs["bbox_transform"] = target_ax.transAxes
+
+        elif transform_mode == "figure":
+            kwargs["bbox_transform"] = fig.transFigure
+
+        legend_obj = target_ax.legend(handles, labels, **kwargs)
+
+    else:
+        transform_mode = legend_cfg.general_legend_bbox_transform
+
+        if transform_mode == "auto":
+            transform_mode = "figure"
+
+        if transform_mode == "figure":
+            kwargs["bbox_transform"] = fig.transFigure
+
+        legend_obj = fig.legend(handles, labels, **kwargs)
+
+    try:
+        setattr(legend_obj, "_ciplot_label_to_artists", label_to_artists)
+
+    except Exception:
+        pass
+
+    return legend_obj
 
 def _apply_axis_cfg(ax: Axes, axis_cfg: AxisCfg, which_axis: str, default_fontsize: int):
     """

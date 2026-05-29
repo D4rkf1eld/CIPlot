@@ -1,6 +1,7 @@
 # Copyright (c) D4rkf1eld 2026. All rights reserved.
 
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple, Union, Literal
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -9,7 +10,12 @@ import numpy as np
 Number = Union[int, float]
 
 AxisScale = Literal["linear", "log", "symlog", "logit"]
+
 LegendLocation = Literal["best", "upper right", "upper left", "lower left", "lower right", "right", "center left", "center right", "lower center", "upper center", "center"]
+
+GeneralLegendPlacement = Literal["figure", "subplot"]
+GeneralLegendBBoxTransform = Literal["auto", "figure", "target_axes"]
+GeneralLegendReserveSpace = Literal["none", "right", "left", "top", "bottom"]
 
 ArrayLikeImg = Union[np.ndarray]
 ArrayLike = Union[Sequence[Number], np.ndarray]
@@ -90,17 +96,34 @@ class GridCfg:
 class LegendCfg:
     """
     Legend configuration, including optional click-to-toggle behavior.
+    The behavior is differentiated between regular subplot legends and general/page-level legends for browse_structured_subplot_pages(...):
 
-    - show_legend: Whether to display the legend.
-    - legend_location: Location of the legend (e.g. "best" or "upper right").
-    - put_legend_outside: If True, place legend outside the plot on the right.
-    - number_columns: Number of columns in the legend.
-    - legend_fontsize: Legend font size.
-    - show_legend_frame: Whether to draw a frame around the legend.
-    - legend_fancybox: Whether to use a fancy box for the legend frame.
-    - legend_frame_alpha: Transparency of the legend frame (0.0 to 1.0).
+    Subplot legends:
+    - show_legend: Whether to display the regular axes/subplot legend.
+    - legend_location: Location of the legend (e.g. "best" or "upper right"). This is also used by the general/page-level legend.
+    - put_legend_outside: If True, place the regular subplot legend outside the plot on the right. For the general/page-level legend, this also provides a useful default outside placement when no explicit general_legend_bbox_to_anchor is given.
+    - number_columns: Number of columns in the legend. This is also used by the general/page-level legend.
+    - legend_fontsize: Legend font size. This is also used by the general/page-level legend.
+    - show_legend_frame: Whether to draw a frame around the legend. This is also used by the general/page-level legend.
+    - legend_fancybox: Whether to use a fancy box for the legend frame. This is also used by the general/page-level legend.
+    - legend_frame_alpha: Transparency of the legend frame (0.0 to 1.0). This is also used by the general/page-level legend.
+    - legend_style: Additional keyword arguments forwarded to matplotlib legend creation. This is also used by the general/page-level legend.
 
-    - legend_is_clickable: If True, clicking legend items toggles the visibility of the corresponding lines.
+    General/page-level legends for browse_structured_subplot_pages(...):
+    - general_legend_show: Whether to display one legend collected from all subplots on the current structured page.
+    - general_legend_placement: Place the general legend as a figure-level legend ("figure") or inside/on top of a specified subplot axes ("subplot").
+    - general_legend_target_subplot: Target subplot cell (row_index, column_index) when general_legend_placement = "subplot". This can point to an empty cell to use it as a legend area.
+    - general_legend_bbox_to_anchor: Optional bbox_to_anchor for the general legend. If None, CIPlot chooses a practical default based on placement and reserved space.
+    - general_legend_bbox_transform: Coordinate system for general_legend_bbox_to_anchor. "auto" uses figure coordinates for figure legends and target-axes coordinates for subplot legends.
+    - general_legend_deduplicate_labels: If True, only the first legend entry for a repeated label is displayed, while interactivity still targets all artists with that label.
+    - general_legend_include_labels: Optional allow-list of labels to show in the general legend.
+    - general_legend_exclude_labels: Labels to exclude from the general legend.
+    - general_legend_label_order: Optional explicit label order. Labels not listed here are appended in discovery order.
+    - general_legend_reserve_space: Reserve figure space ("right", "left", "top", "bottom") for the general legend to avoid blocking subplot content.
+    - general_legend_reserve_fraction: Fraction of figure width/height reserved when general_legend_reserve_space is not "none".
+    - general_legend_hide_subplot_legends: If True, suppress regular subplot legends on structured pages when the general legend is shown.
+
+    - legend_is_clickable: If True, clicking legend items toggles the visibility of the corresponding artists. This also works for the general/page-level legend.
     """
 
     show_legend: bool = False
@@ -111,6 +134,22 @@ class LegendCfg:
     show_legend_frame: bool = True
     legend_fancybox: bool = True
     legend_frame_alpha: float = 0.9
+    legend_style: Dict[str, Any] = field(default_factory = dict)
+
+    general_legend_show: bool = False
+    general_legend_placement: GeneralLegendPlacement = "figure"
+    general_legend_target_subplot: Optional[Tuple[int, int]] = None
+    general_legend_bbox_to_anchor: Optional[Tuple[Number, Number]] = None
+    general_legend_bbox_transform: GeneralLegendBBoxTransform = "auto"
+
+    general_legend_deduplicate_labels: bool = True
+    general_legend_include_labels: Optional[Sequence[str]] = None
+    general_legend_exclude_labels: Sequence[str] = field(default_factory = tuple)
+    general_legend_label_order: Optional[Sequence[str]] = None
+
+    general_legend_reserve_space: GeneralLegendReserveSpace = "none"
+    general_legend_reserve_fraction: float = 0.15
+    general_legend_hide_subplot_legends: bool = False
 
     legend_is_clickable: bool = False
 

@@ -71,12 +71,19 @@ def _is_artist_visible_recursive(obj: Any) -> bool:
 
     return False
 
-def _install_legend_toggle(fig: Figure, legend_obj) -> int:
+def _get_legend_label_to_artists(legend_obj) -> Dict[str, Any]:
     """
-    Install click-to-toggle visibility behavior on the legend entries.
-    When a legend entry is clicked, the corresponding plotted artist or artist container on the axes
-    will toggle its visibility.
+    Resolve the mapping from displayed legend labels to plotted artists.
+
+    Regular axes legends derive this from their owning axes. Structured-page general
+    legends may attach a private mapping because they can represent artists across
+    multiple axes.
     """
+
+    custom_mapping = getattr(legend_obj, "_ciplot_label_to_artists", None)
+
+    if isinstance(custom_mapping, dict):
+        return dict(custom_mapping)
 
     ax = getattr(legend_obj, "axes", None)
 
@@ -92,6 +99,41 @@ def _install_legend_toggle(fig: Figure, legend_obj) -> int:
         for handle, label in zip(handles, labels):
             if label and not str(label).startswith("_"):
                 label_to_artist.setdefault(label, handle)
+
+    return label_to_artist
+
+def _set_legend_entry_alpha(legend_obj, label: str, alpha: float, handle_map: Optional[Dict[Any, str]] = None):
+    """
+    Dim or restore the visual legend entries associated with one label.
+    """
+
+    if handle_map is None:
+        legend_handles = _get_legend_handles(legend_obj)
+        legend_texts = list(legend_obj.get_texts())
+
+        handle_map = {}
+
+        for legend_handle, legend_text in zip(legend_handles, legend_texts):
+            handle_map[legend_handle] = legend_text.get_text()
+            handle_map[legend_text] = legend_text.get_text()
+
+    for h, lab in handle_map.items():
+        if lab == label:
+            try:
+                h.set_alpha(alpha)
+
+            except Exception:
+                pass
+
+def _install_legend_toggle(fig: Figure, legend_obj) -> int:
+    """
+    Install click-to-toggle visibility behavior on the legend entries.
+    When a legend entry is clicked, the corresponding plotted artist or artist container on the axes
+    will toggle its visibility. This also supports structured-page general legends that represent
+    artists across multiple axes.
+    """
+
+    label_to_artist = _get_legend_label_to_artists(legend_obj)
 
     legend_handles = _get_legend_handles(legend_obj)
 
@@ -140,13 +182,7 @@ def _install_legend_toggle(fig: Figure, legend_obj) -> int:
         new_visible = _is_artist_visible_recursive(target)
 
         # Dim the legend entry by changing its alpha to indicate whether the corresponding plot element is visible or not
-        for h, lab in handle_map.items():
-            if lab == label:
-                try:
-                    h.set_alpha(1.0 if new_visible else 0.2)
-
-                except Exception:
-                    pass
+        _set_legend_entry_alpha(legend_obj, label, 1.0 if new_visible else 0.2, handle_map = handle_map)
 
         fig.canvas.draw_idle()
 
@@ -201,34 +237,27 @@ def _set_artist_visibility_recursive(obj: Any, visible: bool):
 
 def _set_all_legend_entries_visibility(fig: Figure, legend_obj, visible: bool):
     """
-    Set the visibility of all legend entries and their corresponding lines in the plot to either visible
+    Set the visibility of all legend entries and their corresponding plotted artists to either visible
     or dimmed (not fully hidden, to keep the legend layout intact).
     """
 
     if legend_obj is None:
         return
 
-    ax = getattr(legend_obj, "axes", None)
+    label_to_artist = _get_legend_label_to_artists(legend_obj)
 
-    if ax is not None:
-        try:
-            handles, labels = ax.get_legend_handles_labels()
+    for label, artist in label_to_artist.items():
+        if not label or str(label).startswith("_"):
+            continue
 
-        except Exception:
-            handles, labels = [], []
-
-        for h, lab in zip(handles, labels):
-            if not lab or str(lab).startswith("_"):
-                continue
-
-            _set_artist_visibility_recursive(h, visible)
+        _set_artist_visibility_recursive(artist, visible)
 
     alpha = 1.0 if visible else 0.2
 
     # Set the alpha of the legend entries to indicate their visibility state, without fully hiding them,
     # so that the legend layout remains intact and users can still click on the entries to toggle visibility.
     try:
-        for h in legend_obj.get_lines():
+        for h in _get_legend_handles(legend_obj):
             try:
                 h.set_alpha(alpha)
 

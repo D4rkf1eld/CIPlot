@@ -1,0 +1,8 @@
+# Copyright (c) D4rkf1eld 2026. All rights reserved.
+
+# General files to ignore
+*.DS_Store
+
+# Python-specific files to ignore
+__pycache__/
+*.pyc

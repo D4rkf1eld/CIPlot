@@ -2,6 +2,8 @@
 
 from typing import Any, Dict, List, Optional, Sequence
 
+import dataclasses
+
 import numpy as np
 
 import matplotlib.pyplot as plt
@@ -38,9 +40,11 @@ from .styling import (_apply_dark_mode_post,
                       _rcparams_from_plot_cfg,
                       _try_tint_window_background)
 
-from .rendering import (_add_legend,
+from .rendering import (_add_general_legend,
+                        _add_legend,
                         _apply_axis_cfg,
                         _apply_background_image,
+                        _apply_general_legend_reserved_space,
                         _apply_grid,
                         _apply_markings,
                         _apply_partial_axis_limits)
@@ -644,6 +648,7 @@ def browse_structured_subplot_pages(structured_pages: Sequence[BrowseStructuredP
                                                                    legend_cfg = legend_cfg)
 
             current_page_plot_cfg = effective_page_cfg.plot_cfg
+            current_page_legend_cfg = effective_page_cfg.legend_cfg
 
             for cid in pick_cids:
                 if cid is None:
@@ -707,6 +712,10 @@ def browse_structured_subplot_pages(structured_pages: Sequence[BrowseStructuredP
 
                     effective_subplot_cfg = _resolve_structured_subplot_cfg(page_effective_cfg = effective_page_cfg, subplot_cfg = subplot_cfg)
 
+                    if current_page_legend_cfg.general_legend_show and current_page_legend_cfg.general_legend_hide_subplot_legends:
+                        effective_subplot_cfg = dataclasses.replace(effective_subplot_cfg,
+                                                                    legend_cfg = dataclasses.replace(effective_subplot_cfg.legend_cfg, show_legend = False))
+
                     rendered = _render_structured_subplot(fig = fig,
                                                           ax_left = ax_left,
                                                           subplot_cfg = subplot_cfg,
@@ -761,6 +770,21 @@ def browse_structured_subplot_pages(structured_pages: Sequence[BrowseStructuredP
                     fig.tight_layout()
 
             _apply_subplot_adjust(fig, current_page_plot_cfg)
+
+            if current_page_legend_cfg.general_legend_show:
+                _apply_general_legend_reserved_space(fig, current_page_legend_cfg)
+
+                general_legend_obj = _add_general_legend(fig = fig,
+                                                         axes_grid = axes_grid,
+                                                         axes = all_axes_for_dark_mode,
+                                                         legend_cfg = current_page_legend_cfg,
+                                                         default_fontsize = current_page_plot_cfg.base_font_size)
+
+                if general_legend_obj is not None:
+                    legend_state["objects"].append(general_legend_obj)
+
+                    if current_page_legend_cfg.legend_is_clickable:
+                        pick_cids.append(_install_legend_toggle(fig, general_legend_obj))
 
             _apply_dark_mode_post(fig, all_axes_for_dark_mode, current_page_plot_cfg)
 
